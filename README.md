@@ -4,6 +4,7 @@ The code of several works on [oimo.io/works](https://oimo.io/works)
 ## If you try to compile
 - Use [Haxe](https://haxe.org/) 4.3.1 or later
 - Copy personal libs from [here](https://github.com/saharan/haxelibs/)
+  - Clone that repo, then copy Muun, Pot, and Std into this project (note that this project ignores those dirs)
 - **I often add breaking changes to the personal libs and projects, do not always expect successful compilations!**
 
 ## Marimo

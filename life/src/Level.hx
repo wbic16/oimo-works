@@ -13,15 +13,17 @@ class Level {
 	// position relative to the parent's position
 	public var posX:Int;
 	public var posY:Int;
+	public var posZ:Int;
 
 	public var time:Int; // from 0 to PERIOD-1
 
 	final patternCache:Map<Int, Int> = [];
 	final sampler:Sampler;
 
-	function new(posX:Int, posY:Int, time:Int, parent:Parent, sampler:Sampler) {
+	function new(posX:Int, posY:Int, posZ:Int, time:Int, parent:Parent, sampler:Sampler) {
 		this.posX = posX;
 		this.posY = posY;
+		this.posZ = posZ;
 		this.time = time;
 		this.parent = parent;
 		this.sampler = sampler;
@@ -30,7 +32,7 @@ class Level {
 	public static function generateRandomLevel(sampler:Sampler):Level {
 		final index = Std.random(64);
 		final loc = sampler.sampleLocation(sampler.frames.location.patterns[index]);
-		return new Level(loc.x, loc.y, 0, Undetermined(loc.time, loc.pattern), sampler);
+		return new Level(loc.x, loc.y, loc.z, 0, Undetermined(loc.time, loc.pattern), sampler);
 	}
 
 	extern static inline function div(x:Int):Int {
@@ -45,11 +47,11 @@ class Level {
 		return x & 2047;
 	}
 
-	public function translate(dx:Int, dy:Int):Void {
-		translateImpl(this, dx, dy);
+	public function translate(dx:Int, dy:Int, dz:Int):Void {
+		translateImpl(this, dx, dy, dz);
 	}
 
-	static function translateImpl(level:Level, dx:Int, dy:Int):Void {
+	static function translateImpl(level:Level, dx:Int, dy:Int, dz:Int):Void {
 		final levels = [];
 		final deltas = [];
 		assert(dx != 0 || dy != 0);
@@ -58,14 +60,19 @@ class Level {
 			levels.push(level);
 			final px = level.posX;
 			final py = level.posY;
+			final pz = level.posZ;
 			level.posX += dx;
 			level.posY += dy;
+			level.posZ += dz;
 			dx = div(level.posX);
 			dy = div(level.posY);
+			dz = div(level.posZ);
 			level.posX = mod(level.posX);
 			level.posY = mod(level.posY);
+			level.posZ = mod(level.posZ);
+			deltas.push(level.posZ - pz);
 			deltas.push(level.posY - py);
-			deltas.push(level.posX - px);
+			deltas.push(level.posX - px);			
 			depth++;
 			if (dx == 0 && dy == 0)
 				break;
@@ -118,14 +125,14 @@ class Level {
 				level;
 			case Undetermined(time, pattern):
 				final loc = sampler.sampleLocation(pattern);
-				final level = new Level(loc.x, loc.y, time, Undetermined(loc.time, loc.pattern), sampler);
+				final level = new Level(loc.x, loc.y, loc.z, time, Undetermined(loc.time, loc.pattern), sampler);
 				parent = Level(level);
 				return level;
 		}
 	}
 
-	public function makeSubLevel(x:Int, y:Int, time:Int):Level {
-		return new Level(x, y, time, Level(this), sampler);
+	public function makeSubLevel(x:Int, y:Int, z:Int, time:Int):Level {
+		return new Level(x, y, z, time, Level(this), sampler);
 	}
 
 	function getParentTime():Int {
@@ -148,9 +155,10 @@ class Level {
 		}
 	}
 
-	function getBitOfCell(relX:Int, relY:Int, prev:Bool):Int {
+	function getBitOfCell(relX:Int, relY:Int, relZ:Int, prev:Bool):Int {
 		final x = posX + relX;
 		final y = posY + relY;
+		final z = posZ + relZ;
 		final px = div(x);
 		final py = div(y);
 		final p = getParentPattern(px, py);
@@ -198,14 +206,16 @@ class Level {
 	static inline final GET_BIT = 11;
 	static inline final GET_BIT1 = 12;
 
-	static function getPatternOfCellImpl(level:Level, relX:Int, relY:Int, sampler:Sampler):Int {
+	static function getPatternOfCellImpl(level:Level, relX:Int, relY:Int, relZ:Int, sampler:Sampler):Int {
 		final stackI = [];
 		final stackL = [];
 		final diffX = [0, 1, -1, 0, 1, -1, 0, 1, 0];
 		final diffY = [-1, -1, 0, 0, 0, 1, 1, 1, 0];
+		final diffZ = [0, 0, 0, 0, 0, 0, 0, 0, 0];
 		stackL.push(level);
 		stackI.push(relY);
 		stackI.push(relX);
+		stackI.push(relZ);
 		stackI.push(GET_PATTERN);
 		var ret = -1;
 		var count = 0;
@@ -219,17 +229,20 @@ class Level {
 				case GET_PATTERN:
 					final relX = stackI.pop();
 					final relY = stackI.pop();
-					final key = (relX & 0xffff) | (relY & 0xffff) << 16;
+					final relZ = stackI.pop();
+					final key = (relX & 0xfff) | (relY & 0xfff) << 12 | (relZ & 0xff) << 16;
 					if (level.patternCache.exists(key)) {
 						ret = level.patternCache[key];
 					} else {
 						stackL.push(level);
 						stackI.push(0);
+						stackI.push(relZ);
 						stackI.push(relY);
-						stackI.push(relX);
+						stackI.push(relX);						
 						stackI.push(GET_PATTERN1);
 						stackL.push(level);
 						stackI.push(0);
+						stackI.push(relZ - 1);
 						stackI.push(relY - 1);
 						stackI.push(relX - 1);
 						stackI.push(GET_BIT);
@@ -241,11 +254,13 @@ class Level {
 					final bit = stackI.pop() | ret << step;
 					stackL.push(level);
 					stackI.push(bit);
+					stackI.push(relZ);
 					stackI.push(relY);
 					stackI.push(relX);
 					stackI.push(GET_PATTERN2 + step);
 					stackL.push(level);
 					stackI.push(step == 8 ? 1 : 0);
+					stackI.push(relZ + diffZ[step]);
 					stackI.push(relY + diffY[step]);
 					stackI.push(relX + diffX[step]);
 					stackI.push(GET_BIT);
@@ -253,7 +268,8 @@ class Level {
 					assert(ret != -1);
 					final relX = stackI.pop();
 					final relY = stackI.pop();
-					final key = (relX & 0xffff) | (relY & 0xffff) << 16;
+					final relZ = stackI.pop();
+					final key = (relX & 0xfff) | (relY & 0xfff) << 12 | (relZ & 0xff) << 16;
 					var bit = stackI.pop() | ret << 9;
 					bit ^= (bit >> 4 & 1) << 9;
 					level.patternCache[key] = bit;
@@ -261,31 +277,36 @@ class Level {
 				case GET_BIT:
 					final relX = stackI.pop();
 					final relY = stackI.pop();
+					final relZ = stackI.pop();
 					final prev = stackI.pop();
 					final x = level.posX + relX;
 					final y = level.posY + relY;
+					final z = level.posZ + relZ;
 					final px = div(x);
 					final py = div(y);
 					switch level.parent {
 						case Undetermined(_, pattern) if (px == 0 && py == 0):
-							ret = sampler.sampleBit(level.getParentTime() - prev, mod(x), mod(y), pattern);
+							ret = sampler.sampleBit(level.getParentTime() - prev, mod(x), mod(y), mod(z), pattern);
 						case _:
 							stackL.push(level);
 							stackI.push(prev);
+							stackI.push(mod(z));
 							stackI.push(mod(y));
 							stackI.push(mod(x));
 							stackI.push(GET_BIT1);
 							stackL.push(level.getParent());
+							stackI.push(pz);
 							stackI.push(py);
 							stackI.push(px);
 							stackI.push(GET_PATTERN);
 					}
 				case GET_BIT1:
-					assert(ret != -1);
+					assert(ret != -1);					
 					final modX = stackI.pop();
 					final modY = stackI.pop();
+					final modZ = stackI.pop();
 					final prev = stackI.pop();
-					ret = sampler.sampleBit(level.getParentTime() - prev, modX, modY, ret);
+					ret = sampler.sampleBit(level.getParentTime() - prev, modX, modY, modZ, ret);
 			}
 		}
 		// trace("length: " + count);
@@ -311,7 +332,7 @@ class Level {
 			var res = "";
 			var l = this;
 			while (l != null) {
-				res = " -> (" + l.posX + ", " + l.posY + ", " + l.time + ")" + res;
+				res = " -> (" + l.posX + ", " + l.posY + ", " + l.posZ + ", " + l.time + ")" + res;
 				l = switch l.parent {
 					case Level(level):
 						level;
@@ -327,7 +348,7 @@ class Level {
 			var omitted = 0;
 			while (l != null) {
 				if (++count < 5) {
-					res = " -> (" + l.posX + ", " + l.posY + ", " + l.time + ")" + res;
+					res = " -> (" + l.posX + ", " + l.posY + ", " + l.posZ + ", " + l.time + ")" + res;
 				} else {
 					omitted++;
 				}

@@ -10,6 +10,7 @@ class Sampler {
 	public function sampleLocation(pattern:Int):{
 		x:Int,
 		y:Int,
+		z:Int,
 		time:Int,
 		pattern:Int
 	} {
@@ -24,6 +25,7 @@ class Sampler {
 		return {
 			x: posTime[0],
 			y: posTime[1],
+			z: posTime[0], // TODO: what should this be?
 			time: posTime[2],
 			pattern: parentPattern
 		}
@@ -56,7 +58,7 @@ class Sampler {
 		return bit;
 	}
 
-	public function sampleBit(time:Int, x:Int, y:Int, pattern:Int):Int {
+	public function sampleBit(time:Int, x:Int, y:Int, z:Int, pattern:Int):Int {
 		if (time == -1) {
 			time += Main.PERIOD;
 			pattern = fabricatePrevPattern(pattern);
@@ -64,10 +66,12 @@ class Sampler {
 		assert(time >= 0 && time < Main.PERIOD);
 		assert(x >= 0 && x < 2048);
 		assert(y >= 0 && y < 2048);
+		assert(z >= 0 && z < 2048);
 		final tx = x >> 9;
 		final ty = y >> 9;
-		final nodeIndex = frames.getTile(time, pattern, tx, ty);
-		return graph.getBit(9, nodeIndex, x & 511, y & 511);
+		final tz = z >> 9;
+		final nodeIndex = frames.getTile(time, pattern, tx*tx/tz, ty*ty/tz);
+		return graph.getBit(9, nodeIndex, x*x/z & 511, y*y/z & 511);
 	}
 
 	public function getTiles(time:Int, pattern:Int):Array<Int> {
